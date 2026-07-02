@@ -1,0 +1,17 @@
+requests
+pandas
+numpy
+torch
+scikit-learn
+fastapi
+uvicorn
+streamlit
+folium
+streamlit-folium
+plotly
+evidently
+apscheduler
+python-dotenv
+matplotlib
+seaborn
+joblib
