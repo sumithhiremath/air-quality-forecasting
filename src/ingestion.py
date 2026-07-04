@@ -2,11 +2,10 @@ import requests
 import pandas as pd
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 
-# ─── CONFIG ───────────────────────────────────────────────
-# Paste your token from aqicn.org/data-platform/token/
-API_TOKEN = "36b6772e4a3930417db631e2ddb53000ebae6aff"
-
+load_dotenv()
+API_TOKEN = os.getenv("WAQI_TOKEN")
 BASE_URL = "https://api.waqi.info"
 
 CITIES = [
