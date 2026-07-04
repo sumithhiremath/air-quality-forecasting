@@ -107,8 +107,11 @@ Live AQI reading from Bengaluru government sensors:
 
 ## 📈 Current Status
 
-- [x] Live data ingestion working
-- [ ] Data preprocessing pipeline
+## 📈 Current Status
+
+- [x] Live data ingestion working — WAQI API (real government sensors)
+- [x] GitHub Actions — automated hourly data collection (laptop off)
+- [x] Data preprocessing pipeline — cleaning, lag features, normalization
 - [ ] LSTM model training
 - [ ] FastAPI deployment
 - [ ] Streamlit dashboard
