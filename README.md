@@ -1,36 +1,44 @@
-# 🌍 Real-Time Air Quality Forecasting Platform
+# 🌐 CLIMA — Climate Risk Intelligence Platform
 
-A production-grade ML system that ingests live air pollution data 
-from government monitoring stations across Indian cities, forecasts 
-AQI 24 hours ahead using LSTM, and serves predictions via a 
-live interactive dashboard.
+> "Weather happens to everyone. Only you'll know what it means."
+
+A real-time AI platform that predicts weather-driven logistics 
+disruptions across Indian supply chains — 72 hours before they happen.
 
 ---
 
 ## 🚨 The Problem
 
-India has 14 of the world's 20 most polluted cities. CPCB publishes 
-current AQI — but nobody tells you what it will be tomorrow. 
-Doctors, schools, athletes, and construction sites make decisions 
-blind. This system fixes that.
+India loses ₹15,000+ crore annually to weather-driven 
+logistics disruptions. Logistics managers check weather apps 
+manually, guess delivery timelines, and react after delays happen.
+
+CLIMA predicts disruptions BEFORE they happen — 
+and tells you exactly what they'll cost.
 
 ---
 
-## ✅ What This System Does
+## ✅ What CLIMA Does
 
-- Pulls **live AQI data** from WAQI API (real government sensors) every hour
-- Cleans and engineers features from raw pollution readings
-- Forecasts AQI **24 hours ahead** using an LSTM deep learning model
-- Serves predictions via **FastAPI REST endpoint**
-- Displays a **live interactive map** of Karnataka cities on Streamlit
-- **Detects data drift** using Evidently AI and auto-retrains daily
-- Fully containerized with **Docker** and deployed on **Render**
+- Ingests live weather + AQI data from 5 cities every hour
+- Predicts route-level delay probability 72 hours ahead
+- Calculates financial impact in ₹ for each disruption
+- Suggests optimal alternative routes automatically  
+- Sends Telegram morning briefings to logistics teams
+- Monitors news for real-time disruption events (NLP)
+- Auto-retrains when data patterns shift
 
 ---
 
-## 🏙️ Cities Covered
+## 🛣️ Routes Covered
 
-Bengaluru · Delhi · Mumbai · Hyderabad · Chennai
+| Route | Highway | Distance | Avg Transit |
+|-------|---------|----------|-------------|
+| Bengaluru → Mumbai | NH48 | 984 km | 18 hrs |
+| Bengaluru → Chennai | NH48 | 346 km | 6 hrs |
+| Bengaluru → Hyderabad | NH44 | 574 km | 10 hrs |
+| Bengaluru → Pune | NH48 | 840 km | 15 hrs |
+| Bengaluru → Delhi | NH44 | 2150 km | 40 hrs |
 
 ---
 
@@ -38,90 +46,36 @@ Bengaluru · Delhi · Mumbai · Hyderabad · Chennai
 
 | Layer | Technology |
 |-------|-----------|
-| Data Ingestion | Python, Requests, WAQI API |
-| Data Processing | Pandas, NumPy, Scikit-learn |
-| ML Model | PyTorch LSTM |
-| API | FastAPI, Uvicorn |
+| Data Ingestion | Python, WAQI API, OpenWeatherMap |
+| Stream Processing | APScheduler, GitHub Actions |
+| ML Models | PyTorch LSTM, XGBoost |
+| Risk Engine | Custom scoring algorithm |
+| API | FastAPI |
 | Dashboard | Streamlit, Folium, Plotly |
+| Alerts | Telegram Bot API |
 | Monitoring | Evidently AI |
-| Scheduling | APScheduler |
 | Deployment | Docker, Render |
 
 ---
 
-## 📁 Project Structure
-
----
-
-## ⚙️ How to Run Locally
-
-### 1. Clone the repo
-```bash
-git clone https://github.com/YOUR_USERNAME/air-quality-forecasting.git
-cd air-quality-forecasting
-```
-
-### 2. Create virtual environment
-```bash
-python -m venv venv
-venv\Scripts\activate      # Windows
-source venv/bin/activate   # Mac/Linux
-```
-
-### 3. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Add your API token
-Create a `.env` file:
-### 5. Fetch live data
-```bash
-python src/ingestion.py
-```
-
-### 6. Run dashboard
-```bash
-streamlit run dashboard/app.py
-```
-
----
-
-## 📊 Sample Output
-
-Live AQI reading from Bengaluru government sensors:
-- AQI: 87 (Satisfactory)
-- PM2.5: 42 µg/m³
-- PM10: 67 µg/m³
-- Temperature: 28°C
-
----
-
-## 🎯 Business Impact
-
-- Enables 24-hour advance warning before dangerous AQI levels
-- Directly useful for hospitals, schools, and outdoor event planners
-- Auto-retraining ensures model stays accurate as seasons change
-
----
-
 ## 📈 Current Status
 
-## 📈 Current Status
-
-- [x] Live data ingestion working — WAQI API (real government sensors)
-- [x] GitHub Actions — automated hourly data collection (laptop off)
-- [x] Data preprocessing pipeline — cleaning, lag features, normalization
-- [ ] LSTM model training
+- [x] Live weather + AQI data ingestion (5 cities)
+- [x] GitHub Actions automated hourly collection
+- [x] Data preprocessing pipeline
+- [x] Route database (5 major routes)
+- [x] Risk scoring engine with financial impact
+- [ ] LSTM forecasting model
 - [ ] FastAPI deployment
 - [ ] Streamlit dashboard
-- [ ] Docker containerization
-- [ ] Drift monitoring
+- [ ] Telegram alert bot
+- [ ] News NLP disruption detection
+- [ ] Docker + cloud deployment
 
 ---
 
 ## 👤 Author
 
 **Sumith Hiremath**  
-B.E. AI & ML — Sri Siddhartha Institute of Technology, Tumkur  
-[LinkedIn](www.linkedin.com/in/sumith-hiremath-a10a0a361) · [GitHub](https://github.com/sumithhiremath/air-quality-forecasting)
+B.E. AI & ML — SSIT Tumkur  
+GitHub: sumithhiremath
