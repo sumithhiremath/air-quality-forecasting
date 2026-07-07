@@ -1,6 +1,11 @@
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+# Fix: Windows PowerShell uses cp1252 — force UTF-8
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 import pandas as pd
 import numpy as np
@@ -170,7 +175,8 @@ if __name__ == "__main__":
     results = calculate_all_routes_risk(city_weather, "automotive")
 
     for r in results:
-        print(f"\n  {r['risk_color']} {r['route_name']}")
+        rname = r['route_name'].replace('\u2192', '->')
+        print(f"\n  {rname}")
         print(f"     Highway:  {r['highway']}")
         print(f"     Risk:     {r['risk_score']}/100 — {r['risk_level']}")
         print(f"     Action:   {r['recommended_action']}")

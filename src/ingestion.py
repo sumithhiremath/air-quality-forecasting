@@ -1,36 +1,90 @@
+# ─────────────────────────────────────────────────────────────
+# CLIMA — Live AQI & Weather Data Ingestion
+# Source : WAQI API (World Air Quality Index)
+# Fixes  : Added Pune, temperature validation, encoding fix,
+#           data quality flags, deduplication guard
+# ─────────────────────────────────────────────────────────────
+
+import sys
+import os
+
+# Fix: Windows PowerShell / CMD uses cp1252 by default which
+# crashes on emoji. Force UTF-8 so scripts run on all platforms.
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 import requests
 import pandas as pd
-import os
 from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 API_TOKEN = os.getenv("WAQI_TOKEN")
-BASE_URL = "https://api.waqi.info"
+BASE_URL   = "https://api.waqi.info"
 
+# ─── CITY LIST ────────────────────────────────────────────────
+# FIX (Day 4): Added "pune" — was missing but BLR_PUN route exists
 CITIES = [
     "bengaluru",
     "delhi",
     "mumbai",
     "hyderabad",
-    "chennai"
+    "chennai",
+    "pune",       # <-- ADDED: required for Bengaluru→Pune route
 ]
 
-# ─── AQI LABEL ────────────────────────────────────────────
+# ─── DATA VALIDATION BOUNDS (India-specific) ──────────────────
+# FIX (Day 4): Validate sensor readings before saving.
+# Mumbai was returning -19.2C due to a bad WAQI station sensor.
+VALIDATION_BOUNDS = {
+    "aqi":         (0,   999),
+    "pm25":        (0,   999),
+    "pm10":        (0,   999),
+    "temperature": (5,    50),   # India realistic range (°C)
+    "humidity":    (0,   100),
+    "wind":        (0,   200),
+}
+
+
+# ─── AQI LABEL ────────────────────────────────────────────────
 def get_aqi_label(aqi: float) -> str:
-    if aqi <= 50:    return "🟢 Good"
-    elif aqi <= 100: return "🟡 Satisfactory"
-    elif aqi <= 150: return "🟠 Moderate"
-    elif aqi <= 200: return "🔴 Poor"
-    elif aqi <= 300: return "🟣 Very Poor"
-    else:            return "⚫ Severe"
+    if aqi <= 50:    return "Good"
+    elif aqi <= 100: return "Satisfactory"
+    elif aqi <= 150: return "Moderate"
+    elif aqi <= 200: return "Poor"
+    elif aqi <= 300: return "Very Poor"
+    else:            return "Severe"
 
 
-# ─── FETCH FUNCTION ───────────────────────────────────────
+# ─── VALIDATE ONE FIELD ───────────────────────────────────────
+def validate_field(field: str, value) -> tuple:
+    """
+    Returns (cleaned_value, flag_message_or_None).
+    If the value is outside bounds, it is set to None and flagged.
+    """
+    if value is None:
+        return None, None
+
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None, f"{field} could not be converted to float: {value}"
+
+    if field in VALIDATION_BOUNDS:
+        lo, hi = VALIDATION_BOUNDS[field]
+        if not (lo <= v <= hi):
+            return None, (
+                f"{field} = {v} is OUTSIDE valid range [{lo}, {hi}] "
+                f"— rejected (likely bad sensor data)"
+            )
+    return v, None
+
+
+# ─── FETCH FUNCTION ───────────────────────────────────────────
 def fetch_aqi(city: str) -> dict:
     """
-    Fetches live AQI data for a city using WAQI API.
-    Returns a clean dictionary of readings.
+    Fetches live AQI + weather data for a city via WAQI API.
+    Returns a validated, clean dictionary.  Returns {} on failure.
     """
     url = f"{BASE_URL}/feed/{city}/?token={API_TOKEN}"
 
@@ -40,73 +94,89 @@ def fetch_aqi(city: str) -> dict:
         data = response.json()
 
         if data.get("status") != "ok":
-            print(f"⚠️  No data for {city}: {data.get('data')}")
+            print(f"  [WARN] No data for {city}: {data.get('data')}")
             return {}
 
         result = data["data"]
+        iaqi   = result.get("iaqi", {})
 
-        # Extract all pollutant values safely
-        iaqi = result.get("iaqi", {})
-
-        reading = {
-            "city":         city,
-            "station":      result.get("city", {}).get("name", city),
-            "aqi":          result.get("aqi"),
-            "pm25":         iaqi.get("pm25", {}).get("v"),
-            "pm10":         iaqi.get("pm10", {}).get("v"),
-            "no2":          iaqi.get("no2",  {}).get("v"),
-            "co":           iaqi.get("co",   {}).get("v"),
-            "o3":           iaqi.get("o3",   {}).get("v"),
-            "so2":          iaqi.get("so2",  {}).get("v"),
-            "temperature":  iaqi.get("t",    {}).get("v"),
-            "humidity":     iaqi.get("h",    {}).get("v"),
-            "wind":         iaqi.get("w",    {}).get("v"),
-            "latitude":     result.get("city", {}).get("geo", [None, None])[0],
-            "longitude":    result.get("city", {}).get("geo", [None, None])[1],
+        # Raw extraction
+        raw = {
+            "city":        city,
+            "station":     result.get("city", {}).get("name", city),
+            "aqi":         result.get("aqi"),
+            "pm25":        iaqi.get("pm25", {}).get("v"),
+            "pm10":        iaqi.get("pm10", {}).get("v"),
+            "no2":         iaqi.get("no2",  {}).get("v"),
+            "co":          iaqi.get("co",   {}).get("v"),
+            "o3":          iaqi.get("o3",   {}).get("v"),
+            "so2":         iaqi.get("so2",  {}).get("v"),
+            "temperature": iaqi.get("t",    {}).get("v"),
+            "humidity":    iaqi.get("h",    {}).get("v"),
+            "wind":        iaqi.get("w",    {}).get("v"),
+            "latitude":    result.get("city", {}).get("geo", [None, None])[0],
+            "longitude":   result.get("city", {}).get("geo", [None, None])[1],
             "last_updated": result.get("time", {}).get("s"),
-            "fetched_at":   datetime.utcnow().isoformat()
+            "fetched_at":  datetime.utcnow().isoformat(),
         }
 
-        return reading
+        # Validate fields — reject readings outside physical bounds
+        quality_flags = []
+        validated_fields = ["aqi", "pm25", "pm10", "temperature", "humidity", "wind"]
+        for field in validated_fields:
+            cleaned, flag = validate_field(field, raw[field])
+            raw[field] = cleaned
+            if flag:
+                quality_flags.append(flag)
+
+        raw["data_quality_flags"] = "; ".join(quality_flags) if quality_flags else "OK"
+        raw["quality_ok"] = 1 if not quality_flags else 0
+
+        if quality_flags:
+            print(f"  [DATA QUALITY] {city.upper()}: {'; '.join(quality_flags)}")
+
+        return raw
 
     except requests.exceptions.ConnectionError:
-        print(f"❌ Connection error — check internet")
+        print(f"  [ERROR] {city}: Connection error — check internet")
         return {}
     except requests.exceptions.Timeout:
-        print(f"❌ Timeout for {city}")
+        print(f"  [ERROR] {city}: Request timed out")
         return {}
     except Exception as e:
-        print(f"❌ Error for {city}: {e}")
+        print(f"  [ERROR] {city}: {e}")
         return {}
 
 
-# ─── DISPLAY FUNCTION ─────────────────────────────────────
+# ─── DISPLAY FUNCTION ─────────────────────────────────────────
 def display_aqi(reading: dict):
-    city = reading.get("city", "Unknown").upper()
-    aqi  = reading.get("aqi", "N/A")
-    label = get_aqi_label(float(aqi)) if aqi else "N/A"
+    city  = reading.get("city", "Unknown").upper()
+    aqi   = reading.get("aqi")
+    temp  = reading.get("temperature")
+    hum   = reading.get("humidity")
+    wind  = reading.get("wind")
+    label = get_aqi_label(float(aqi)) if aqi is not None else "N/A"
+    flag  = reading.get("data_quality_flags", "OK")
 
-    print(f"\n{'='*55}")
-    print(f"  {city} — {reading.get('station', '')}")
-    print(f"{'='*55}")
-    print(f"  AQI Overall : {aqi}  {label}")
-    print(f"  {'─'*45}")
-    print(f"  PM2.5       : {reading.get('pm25', 'N/A')} µg/m³")
-    print(f"  PM10        : {reading.get('pm10', 'N/A')} µg/m³")
-    print(f"  NO2         : {reading.get('no2',  'N/A')} µg/m³")
-    print(f"  CO          : {reading.get('co',   'N/A')} µg/m³")
-    print(f"  O3          : {reading.get('o3',   'N/A')} µg/m³")
-    print(f"  Temperature : {reading.get('temperature', 'N/A')} °C")
-    print(f"  Humidity    : {reading.get('humidity', 'N/A')} %")
-    print(f"  {'─'*45}")
+    print(f"\n  {'='*52}")
+    print(f"  {city}")
+    print(f"  {'='*52}")
+    print(f"  AQI         : {aqi if aqi is not None else 'N/A':>6}   ({label})")
+    print(f"  PM2.5       : {reading.get('pm25', 'N/A')}")
+    print(f"  PM10        : {reading.get('pm10', 'N/A')}")
+    print(f"  Temperature : {temp if temp is not None else 'N/A (bad sensor)'} C")
+    print(f"  Humidity    : {hum  if hum  is not None else 'N/A'} %")
+    print(f"  Wind        : {wind if wind is not None else 'N/A'} km/h")
+    print(f"  Quality     : {flag}")
     print(f"  Last Updated: {reading.get('last_updated', 'N/A')}")
-    print(f"{'='*55}\n")
+    print(f"  {'='*52}")
 
 
-# ─── SAVE FUNCTION ────────────────────────────────────────
-def save_raw_data(reading: dict, city: str):
+# ─── SAVE FUNCTION ────────────────────────────────────────────
+def save_raw_data(reading: dict, city: str) -> str:
+    """Saves one city reading to data/raw/. Returns saved filename."""
     if not reading:
-        return
+        return ""
 
     os.makedirs("data/raw", exist_ok=True)
 
@@ -115,29 +185,49 @@ def save_raw_data(reading: dict, city: str):
 
     df = pd.DataFrame([reading])
     df.to_csv(filename, index=False)
-    print(f"✅ Saved → {filename}")
+    print(f"  Saved --> {filename}")
+    return filename
 
 
-# ─── MAIN ─────────────────────────────────────────────────
+# ─── MAIN ─────────────────────────────────────────────────────
 if __name__ == "__main__":
 
-    print("\n🌍 Real-Time Air Quality Fetcher — India Cities\n")
+    print("\n" + "=" * 60)
+    print("  CLIMA - Real-Time AQI & Weather Ingestion")
+    print(f"  {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    print("=" * 60)
+    print(f"  Cities: {', '.join(c.upper() for c in CITIES)}\n")
 
     all_readings = []
+    quality_summary = {"ok": 0, "flagged": 0, "failed": 0}
 
     for city in CITIES:
+        print(f"  Fetching {city.upper()}...")
         reading = fetch_aqi(city)
 
         if reading:
             display_aqi(reading)
             save_raw_data(reading, city)
             all_readings.append(reading)
+            if reading.get("quality_ok"):
+                quality_summary["ok"] += 1
+            else:
+                quality_summary["flagged"] += 1
+        else:
+            quality_summary["failed"] += 1
+            print(f"  [SKIP] {city.upper()}: No data returned")
 
-    # Save all cities combined into one file too
+    # Save combined snapshot
     if all_readings:
         os.makedirs("data/raw", exist_ok=True)
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M")
+        timestamp    = datetime.utcnow().strftime("%Y%m%d_%H%M")
         combined_file = f"data/raw/all_cities_{timestamp}.csv"
         pd.DataFrame(all_readings).to_csv(combined_file, index=False)
-        print(f"\n📦 Combined file saved → {combined_file}")
-        print(f"✅ Total cities fetched: {len(all_readings)}")
+        print(f"\n  Combined snapshot --> {combined_file}")
+
+    print(f"\n  Summary:")
+    print(f"    Cities fetched   : {len(all_readings)}/{len(CITIES)}")
+    print(f"    Quality OK       : {quality_summary['ok']}")
+    print(f"    Flagged (bad data): {quality_summary['flagged']}")
+    print(f"    Failed (no data) : {quality_summary['failed']}")
+    print("\n" + "=" * 60)

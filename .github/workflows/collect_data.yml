@@ -2,8 +2,8 @@ name: Hourly AQI Data Collection
 
 on:
   schedule:
-    - cron: "0 * * * *"
-  workflow_dispatch:
+    - cron: "0 * * * *"   # Every hour at :00 minutes (UTC)
+  workflow_dispatch:        # Allow manual trigger from GitHub UI
 
 permissions:
   contents: write
@@ -26,15 +26,34 @@ jobs:
       - name: Install dependencies
         run: pip install requests pandas python-dotenv
 
+      - name: Verify WAQI_TOKEN is set
+        run: |
+          if [ -z "$WAQI_TOKEN" ]; then
+            echo "ERROR: WAQI_TOKEN secret is not set in GitHub repo settings!"
+            echo "Go to: Settings > Secrets and variables > Actions > New repository secret"
+            exit 1
+          else
+            echo "WAQI_TOKEN is set (length: ${#WAQI_TOKEN})"
+          fi
+        env:
+          WAQI_TOKEN: ${{ secrets.WAQI_TOKEN }}
+
       - name: Run ingestion
         env:
           WAQI_TOKEN: ${{ secrets.WAQI_TOKEN }}
-        run: python src/ingestion.py
+        run: |
+          cd $GITHUB_WORKSPACE
+          python src/ingestion.py
+
+      - name: Show collected files
+        run: |
+          echo "Files in data/raw/:"
+          ls -lh data/raw/ | tail -20
 
       - name: Commit new data
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/raw/
-          git diff --staged --quiet || git commit -m "Auto: AQI data $(date -u '+%Y-%m-%d %H:%M')"
+          git diff --staged --quiet || git commit -m "Auto: AQI data collection $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
