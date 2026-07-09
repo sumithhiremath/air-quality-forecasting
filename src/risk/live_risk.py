@@ -55,10 +55,9 @@ def get_latest_weather() -> dict:
 
         row = df.iloc[-1]
 
-        # Skip if data was flagged as bad quality
+        # Warn if data was flagged as bad quality, but proceed using fallbacks
         if "quality_ok" in row and row["quality_ok"] == 0:
-            print(f"  [SKIP] {city.upper()}: data flagged as bad quality — not used in risk scoring")
-            continue
+            print(f"  [WARN] {city.upper()}: data was flagged ({row.get('data_quality_flags')}) — proceeding with fallback values")
 
         # Safely extract weather fields
         def safe_float(val, default):
