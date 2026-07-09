@@ -80,6 +80,50 @@ def validate_field(field: str, value) -> tuple:
     return v, None
 
 
+# ─── BACKUP WEATHER FETCH ─────────────────────────────────────
+def fetch_backup_weather(lat: float, lon: float) -> dict:
+    """
+    Queries OpenWeatherMap (if token is set) or Open-Meteo (as a free keyless fallback)
+    to retrieve temperature, humidity, and wind speed.
+    """
+    owm_token = os.getenv("OPENWEATHER_TOKEN")
+    
+    # Try OpenWeatherMap first if token is available
+    if owm_token:
+        try:
+            url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={owm_token}&units=metric"
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                print("  [BACKUP] Successfully fetched backup weather from OpenWeatherMap")
+                return {
+                    "temperature": data.get("main", {}).get("temp"),
+                    "humidity":    data.get("main", {}).get("humidity"),
+                    "wind":        float(data.get("wind", {}).get("speed", 0)) * 3.6 # m/s to km/h
+                }
+            else:
+                print(f"  [BACKUP WARN] OpenWeatherMap returned status: {r.status_code}")
+        except Exception as e:
+            print(f"  [BACKUP ERROR] Failed to fetch from OpenWeatherMap: {e}")
+
+    # Fallback to keyless Open-Meteo
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json().get("current", {})
+            print("  [BACKUP] Successfully fetched keyless backup weather from Open-Meteo")
+            return {
+                "temperature": data.get("temperature_2m"),
+                "humidity":    data.get("relative_humidity_2m"),
+                "wind":        data.get("wind_speed_10m")
+            }
+    except Exception as e:
+        print(f"  [BACKUP ERROR] Failed to fetch from Open-Meteo: {e}")
+        
+    return {}
+
+
 # ─── FETCH FUNCTION ───────────────────────────────────────────
 def fetch_aqi(city: str) -> dict:
     """
@@ -128,6 +172,31 @@ def fetch_aqi(city: str) -> dict:
             raw[field] = cleaned
             if flag:
                 quality_flags.append(flag)
+
+        # Check if weather fields (temperature, humidity, wind) need healing from backup APIs
+        weather_fields = ["temperature", "humidity", "wind"]
+        needs_backup = any(raw[f] is None for f in weather_fields)
+        
+        if needs_backup and raw["latitude"] is not None and raw["longitude"] is not None:
+            print(f"  [HEAL] City {city.upper()} has missing or flagged weather fields. Querying backup weather...")
+            backup = fetch_backup_weather(raw["latitude"], raw["longitude"])
+            if backup:
+                healed_flags = []
+                for field in weather_fields:
+                    if raw[field] is None and field in backup:
+                        val = backup[field]
+                        cleaned, flag = validate_field(field, val)
+                        if cleaned is not None:
+                            raw[field] = cleaned
+                            healed_flags.append(f"{field} (healed with {val})")
+                if healed_flags:
+                    print(f"  [HEAL] {city.upper()}: Healed fields: {', '.join(healed_flags)}")
+                    # Re-evaluate quality flags after healing
+                    quality_flags = []
+                    for field in validated_fields:
+                        _, flag = validate_field(field, raw[field])
+                        if flag:
+                            quality_flags.append(flag)
 
         raw["data_quality_flags"] = "; ".join(quality_flags) if quality_flags else "OK"
         raw["quality_ok"] = 1 if not quality_flags else 0
