@@ -1,0 +1,2 @@
+city,station,aqi,pm25,pm10,no2,co,o3,so2,temperature,humidity,wind,latitude,longitude,last_updated,fetched_at,data_quality_flags,quality_ok
+delhi,"Major Dhyan Chand National Stadium, Delhi, Delhi, India",21.0,21.0,23.0,7.9,6.1,5.8,1.7,33.05,59.45,1.05,28.612498,77.237388,2026-07-22 15:00:00,2026-07-22T11:09:24.457779,OK,1
